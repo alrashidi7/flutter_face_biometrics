@@ -1,0 +1,39 @@
+name: flutter_face_biometrics
+description: >
+  Unified flow for liveness-verified selfie, face embedding (FaceNet), and
+  biometric signature export with optional server upload. Parent app must add
+  assets (facenet.tflite) and platform permissions (camera, optional photo library).
+version: 1.0.0
+publish_to: none
+repository: https://github.com/your-org/flutter_face_biometrics
+issue_tracker: https://github.com/your-org/flutter_face_biometrics/issues
+documentation: https://github.com/your-org/flutter_face_biometrics#readme
+homepage: https://github.com/your-org/flutter_face_biometrics
+
+environment:
+  sdk: '>=3.8.0 <4.0.0'
+
+dependencies:
+  flutter:
+    sdk: flutter
+  camera: ^0.11.3+1
+  google_mlkit_face_detection: ^0.13.1
+  tensorflow_face_verification: ^0.1.2
+  secure_device_signature:
+    git:
+      url: https://github.com/alrashidi7/secure_device_signature.git
+  http: ^1.2.2
+  image: ^4.1.7
+  path_provider: ^2.1.4
+  path: ^1.9.0
+  image_picker: ^1.0.7
+
+dev_dependencies:
+  flutter_test:
+    sdk: flutter
+  flutter_lints: ^5.0.0
+
+flutter:
+  assets:
+    - assets/models/facenet.tflite
+    - assets/models/
