@@ -1,9 +1,13 @@
 import 'dart:convert';
 import 'dart:io';
 
+import 'package:image/image.dart' as image_lib;
+import 'package:path/path.dart' as path_lib;
+import 'package:path_provider/path_provider.dart';
 import 'package:secure_device_signature/device_integrity_signature.dart'
     as device_integrity;
 import 'package:http/http.dart' as http;
+import 'package:tensorflow_face_verification/tensorflow_face_verification.dart';
 
 import 'export_errors.dart';
 import 'export_models.dart';
@@ -53,6 +57,92 @@ class BiometricExportService {
   Future<List<double>> getEmbeddingFromFile(File file) async {
     await ensureModelLoaded();
     return _embedding.getEmbeddingFromFile(file);
+  }
+
+  /// Extracts, upscales, enhances, and saves the face-only crop from [file].
+  ///
+  /// Uses [FaceVerification.extractFaceRegion] — the same detector used for
+  /// embedding — so the crop is guaranteed to contain a detectable face.
+  ///
+  /// Pipeline:
+  ///   1. Extract 160×160 face region (from ML Kit bounding box).
+  ///   2. Upscale to [_kFaceCropSize]×[_kFaceCropSize] with cubic interpolation
+  ///      so the stored/displayed image is high resolution.
+  ///   3. Apply enhancement (gamma, contrast, saturation, sharpening).
+  ///   4. Save as high-quality JPEG.
+  ///
+  /// Returns null if no face is found; caller should fall back to full image.
+  Future<File?> extractFaceCropFile(File file) async {
+    await ensureModelLoaded();
+    try {
+      final faceImage = await FaceVerification.instance.extractFaceRegion(file);
+      if (faceImage == null) return null;
+
+      // Upscale from 160×160 to a display-quality resolution using cubic
+      // interpolation, which preserves edges far better than nearest-neighbour.
+      final upscaled = image_lib.copyResize(
+        faceImage,
+        width: _kFaceCropSize,
+        height: _kFaceCropSize,
+        interpolation: image_lib.Interpolation.cubic,
+      );
+
+      final enhanced = _enhanceFaceCrop(upscaled);
+
+      final jpeg = image_lib.encodeJpg(enhanced, quality: 95);
+      if (jpeg.isEmpty) return null;
+      final tempDir = await getTemporaryDirectory();
+      final out = File(
+        path_lib.join(
+          tempDir.path,
+          'face_crop_${DateTime.now().millisecondsSinceEpoch}.jpg',
+        ),
+      );
+      await out.writeAsBytes(jpeg);
+      return out;
+    } catch (_) {
+      return null;
+    }
+  }
+
+  /// Target resolution for saved face crops (width = height, square).
+  /// 400px is large enough for crisp display on high-DPI screens without
+  /// being wasteful on storage or processing time.
+  static const int _kFaceCropSize = 400;
+
+  /// Applies a sequence of image enhancements to an upscaled face crop.
+  ///
+  /// Pipeline (order matters):
+  ///   1. Gamma + brightness — lifts underexposed selfies without blowing highlights.
+  ///   2. Contrast boost     — makes facial features crisper and more discriminative.
+  ///   3. Saturation reduce  — front cameras oversaturate skin; mild desaturation
+  ///                           makes the embedding more lighting-invariant.
+  ///   4. Sharpening kernel  — recovers edge detail blurred by cubic upscaling.
+  image_lib.Image _enhanceFaceCrop(image_lib.Image src) {
+    image_lib.Image out = src;
+
+    // 1. Gamma 0.88 — mild brightness lift for typical dim indoor selfies.
+    //    brightness 1.05 — small additive offset for very dark pixels.
+    out = image_lib.adjustColor(out, gamma: 0.88, brightness: 1.05);
+
+    // 2. Contrast 115 (scale: 100 = no change, > 100 increases contrast).
+    out = image_lib.contrast(out, contrast: 115);
+
+    // 3. Mild saturation reduction — less colour variance → more consistent
+    //    embeddings across different lighting conditions.
+    out = image_lib.adjustColor(out, saturation: 0.85);
+
+    // 4. 3×3 Laplacian sharpening kernel to recover edges blurred by cubic
+    //    upscaling. amount=0.6 blends sharpened with original to avoid haloing.
+    out = image_lib.convolution(
+      out,
+      filter: [0, -1, 0, -1, 5, -1, 0, -1, 0],
+      div: 1,
+      offset: 0,
+      amount: 0.6,
+    );
+
+    return out;
   }
 
   /// Builds [BiometricExportData] from a captured image [file].

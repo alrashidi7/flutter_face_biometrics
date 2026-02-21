@@ -126,12 +126,16 @@ class _BiometricEnrollmentFlowState extends State<BiometricEnrollmentFlow> {
       _status = 'Extracting embedding...';
     });
 
-    _service.buildExportDataFromFile(imageFile).then((data) {
+    _service.buildExportDataFromFile(imageFile).then((data) async {
+      if (!mounted) return;
+      // Crop to face-only for the stored enrolled image.
+      // Falls back to the full frame if crop fails for any reason.
+      final faceCrop = await _service.extractFaceCropFile(imageFile);
       if (!mounted) return;
       setState(() {
         _step = widget.useSignature ? 4 : 3;
         _data = data;
-        _enrolledImageFile = imageFile;
+        _enrolledImageFile = faceCrop ?? imageFile;
         _showScanner = false;
         _status = 'Done – ready to save';
       });

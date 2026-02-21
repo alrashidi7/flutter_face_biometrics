@@ -1,17 +1,10 @@
 import 'dart:io';
 
+import 'package:flutter_face_biometrics/flutter_face_biometrics.dart';
 import 'package:secure_device_signature/device_integrity_signature.dart'
     as device_integrity;
 import 'package:flutter/material.dart';
 import 'package:image_picker/image_picker.dart';
-
-import '../biometric_export_service.dart';
-import '../biometric_local_storage.dart';
-import '../biometric_local_verifier.dart';
-import '../flutter_face_biometrics_config.dart';
-import '../export_errors.dart';
-import '../face_liveness_scanner.dart';
-import 'biometric_result_card.dart';
 
 /// Verification flow: camera or gallery → compare with stored data.
 class BiometricVerificationFlow extends StatefulWidget {
@@ -152,14 +145,16 @@ class _BiometricVerificationFlowState extends State<BiometricVerificationFlow> {
     });
   }
 
-  /// Called when the scanner delivers a face-cropped image.
-  /// Goes to preview — user must confirm before comparison runs.
+  /// Called when the scanner delivers a captured image.
+  /// Crops to face-only (with upscaling + enhancement) before showing the
+  /// preview — the full frame is kept as fallback if crop fails.
   void _onCaptured(File imageFile) {
     setState(() {
       _showScanner = false;
+      _verificationImageFile = imageFile; // show immediately while cropping
       _showPreview = true;
-      _verificationImageFile = imageFile;
     });
+    _cropToFaceAndUpdatePreview(imageFile);
   }
 
   Future<void> _pickFromGallery() async {
@@ -170,9 +165,19 @@ class _BiometricVerificationFlowState extends State<BiometricVerificationFlow> {
     final file = File(xFile.path);
     setState(() {
       _result = null;
-      _verificationImageFile = file;
+      _verificationImageFile = file; // show immediately while cropping
       _showPreview = true;
     });
+    _cropToFaceAndUpdatePreview(file);
+  }
+
+  /// Crops [original] to face-only and updates [_verificationImageFile] if
+  /// successful. Runs after the preview is already visible so the UI is
+  /// responsive — the image simply updates in place when the crop is ready.
+  Future<void> _cropToFaceAndUpdatePreview(File original) async {
+    final cropped = await _service.extractFaceCropFile(original);
+    if (!mounted || cropped == null) return;
+    setState(() => _verificationImageFile = cropped);
   }
 
   /// Runs after the user confirms on the preview screen.
@@ -306,6 +311,28 @@ class _BiometricVerificationFlowState extends State<BiometricVerificationFlow> {
         success: false,
         message: 'No biometric enrolled',
         detail: 'Enroll your face first, then you can verify.',
+
+        actionLabel: 'Enroll your face',
+        onAction: () {
+          Navigator.push(
+            context,
+            MaterialPageRoute(
+              builder: (_) => Scaffold(
+                body: BiometricEnrollmentFlow(
+                  title: 'We secure you',
+                  subtitle: 'Enroll your face to protect your identity',
+                  useSignature: true,
+                  onSaved: (BiometricExportData data) {
+                    // Optionally upload to server
+                    // await exportService.verifyAndUploadBiometricData(registerUrl, data);
+                    Navigator.pop(context);
+                  },
+                  onError: (e) => debugPrint('Enrollment error: $e'),
+                ),
+              ),
+            ),
+          );
+        },
       ),
     );
   }
@@ -370,6 +397,34 @@ class _BiometricVerificationFlowState extends State<BiometricVerificationFlow> {
             title: 'Verify with gallery',
             description: 'Pick a photo – embedding only (no device check)',
             onTap: _pickFromGallery,
+            colorScheme: cs,
+          ),
+
+          const SizedBox(height: 12),
+          _ModeCard(
+            icon: Icons.photo_library_rounded,
+            title: 'Enroll you biometric',
+            description: 'Enroll your face to protect your identity',
+            onTap: () {
+              Navigator.push(
+                context,
+                MaterialPageRoute(
+                  builder: (_) => Scaffold(
+                    body: BiometricEnrollmentFlow(
+                      title: 'We secure you',
+                      subtitle: 'Enroll your face to protect your identity',
+                      useSignature: true,
+                      onSaved: (BiometricExportData data) {
+                        // Optionally upload to server
+                        // await exportService.verifyAndUploadBiometricData(registerUrl, data);
+                        Navigator.pop(context);
+                      },
+                      onError: (e) => debugPrint('Enrollment error: $e'),
+                    ),
+                  ),
+                ),
+              );
+            },
             colorScheme: cs,
           ),
         ],
