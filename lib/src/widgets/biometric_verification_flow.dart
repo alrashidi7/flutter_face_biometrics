@@ -65,8 +65,18 @@ class _BiometricVerificationFlowState extends State<BiometricVerificationFlow> {
   String? _initError;
   bool _hasStoredData = false;
   bool _showScanner = false;
+
+  /// True while showing the preview screen (before comparison starts).
+  bool _showPreview = false;
+
   bool _verifying = false;
   LocalVerificationResult? _result;
+
+  /// The image that was captured/picked for this verification attempt.
+  File? _verificationImageFile;
+
+  /// Path to the enrolled face image (loaded from stored data).
+  String? _enrolledImagePath;
 
   bool get _requireInjected =>
       widget.config?.requireInjectedDependencies ?? false;
@@ -88,14 +98,17 @@ class _BiometricVerificationFlowState extends State<BiometricVerificationFlow> {
         );
       }
     }
-    _service = widget.service ??
+    _service =
+        widget.service ??
         BiometricExportService(
           modelPath: widget.modelPath,
-          signatureService:
-              widget.useSignature ? device_integrity.SignatureService() : null,
+          signatureService: widget.useSignature
+              ? device_integrity.SignatureService()
+              : null,
         );
     _storage = widget.storage ?? BiometricLocalStorage();
-    _verifier = widget.verifier ??
+    _verifier =
+        widget.verifier ??
         BiometricLocalVerifier(
           storage: _storage,
           similarityThreshold:
@@ -109,11 +122,18 @@ class _BiometricVerificationFlowState extends State<BiometricVerificationFlow> {
     try {
       await _service.ensureModelLoaded();
       final has = await _storage.hasStoredData();
+      // Load enrolled image path upfront for the face comparison widget.
+      String? enrolledPath;
+      if (has) {
+        final stored = await _storage.load();
+        enrolledPath = stored?.enrolledImagePath;
+      }
       if (!mounted) return;
       setState(() {
         _initialized = true;
         _initError = null;
         _hasStoredData = has;
+        _enrolledImagePath = enrolledPath;
       });
     } catch (e) {
       if (!mounted) return;
@@ -128,15 +148,18 @@ class _BiometricVerificationFlowState extends State<BiometricVerificationFlow> {
     setState(() {
       _showScanner = true;
       _result = null;
+      _showPreview = false;
     });
   }
 
+  /// Called when the scanner delivers a face-cropped image.
+  /// Goes to preview — user must confirm before comparison runs.
   void _onCaptured(File imageFile) {
     setState(() {
       _showScanner = false;
-      _verifying = true;
+      _showPreview = true;
+      _verificationImageFile = imageFile;
     });
-    _verifyFromFile(imageFile);
   }
 
   Future<void> _pickFromGallery() async {
@@ -144,15 +167,22 @@ class _BiometricVerificationFlowState extends State<BiometricVerificationFlow> {
     final xFile = await picker.pickImage(source: ImageSource.gallery);
     if (xFile == null || !mounted) return;
 
+    final file = File(xFile.path);
     setState(() {
-      _verifying = true;
       _result = null;
+      _verificationImageFile = file;
+      _showPreview = true;
     });
-    _verifyFromFile(File(xFile.path));
   }
 
-  Future<void> _verifyFromFile(File file) async {
-    setState(() => _verifying = true);
+  /// Runs after the user confirms on the preview screen.
+  Future<void> _runComparison() async {
+    final file = _verificationImageFile;
+    if (file == null) return;
+    setState(() {
+      _showPreview = false;
+      _verifying = true;
+    });
 
     try {
       final result = await _verifier.verifyWithImage(file);
@@ -184,10 +214,21 @@ class _BiometricVerificationFlowState extends State<BiometricVerificationFlow> {
     setState(() => _showScanner = false);
   }
 
+  void _retake() {
+    setState(() {
+      _result = null;
+      _verificationImageFile = null;
+      _showScanner = false;
+      _showPreview = false;
+    });
+  }
+
   void _retry() {
     setState(() {
       _result = null;
+      _verificationImageFile = null;
       _showScanner = false;
+      _showPreview = false;
     });
   }
 
@@ -209,6 +250,10 @@ class _BiometricVerificationFlowState extends State<BiometricVerificationFlow> {
 
     if (_showScanner) {
       return _buildScanner(cs);
+    }
+
+    if (_showPreview && _verificationImageFile != null) {
+      return _buildPreview(cs);
     }
 
     if (_verifying) {
@@ -279,7 +324,11 @@ class _BiometricVerificationFlowState extends State<BiometricVerificationFlow> {
                   color: cs.primary.withValues(alpha: 0.12),
                   borderRadius: BorderRadius.circular(14),
                 ),
-                child: Icon(Icons.verified_user_rounded, size: 32, color: cs.primary),
+                child: Icon(
+                  Icons.verified_user_rounded,
+                  size: 32,
+                  color: cs.primary,
+                ),
               ),
               const SizedBox(width: 16),
               Expanded(
@@ -355,15 +404,184 @@ class _BiometricVerificationFlowState extends State<BiometricVerificationFlow> {
             padding: const EdgeInsets.symmetric(horizontal: 16),
             child: ClipRRect(
               borderRadius: BorderRadius.circular(16),
-                  child: FaceLivenessScanner(
-                  onCaptured: _onCaptured,
-                  onError: _onScanError,
-                  instructionText: 'Position your face and blink to capture',
-                ),
+              child: FaceLivenessScanner(
+                onCaptured: _onCaptured,
+                onError: _onScanError,
+                instructionText: 'Position your face and blink to capture',
               ),
             ),
           ),
+        ),
       ],
+    );
+  }
+
+  /// Shows enrolled + captured faces before any comparison runs.
+  /// User can tap "Compare faces" to proceed or "Retake" to go back.
+  Widget _buildPreview(ColorScheme cs) {
+    final captured = _verificationImageFile!;
+    final enrolledFile = _enrolledImagePath != null
+        ? File(_enrolledImagePath!)
+        : null;
+    final hasEnrolled = enrolledFile != null && enrolledFile.existsSync();
+
+    return SingleChildScrollView(
+      padding: const EdgeInsets.fromLTRB(20, 20, 20, 32),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          // Header
+          Row(
+            children: [
+              Container(
+                padding: const EdgeInsets.all(10),
+                decoration: BoxDecoration(
+                  color: cs.primary.withValues(alpha: 0.12),
+                  borderRadius: BorderRadius.circular(12),
+                ),
+                child: Icon(Icons.compare_rounded, size: 26, color: cs.primary),
+              ),
+              const SizedBox(width: 14),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      'Review your photo',
+                      style: TextStyle(
+                        fontSize: 19,
+                        fontWeight: FontWeight.w700,
+                        color: cs.onSurface,
+                      ),
+                    ),
+                    const SizedBox(height: 2),
+                    Text(
+                      'Make sure your face is clear before comparing',
+                      style: TextStyle(
+                        fontSize: 13,
+                        color: cs.onSurface.withValues(alpha: 0.65),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 24),
+
+          // Side-by-side faces (no result indicator yet)
+          Container(
+            padding: const EdgeInsets.all(16),
+            decoration: BoxDecoration(
+              color: cs.surfaceContainerHighest.withValues(alpha: 0.45),
+              borderRadius: BorderRadius.circular(18),
+              border: Border.all(
+                color: cs.outline.withValues(alpha: 0.25),
+                width: 1.5,
+              ),
+            ),
+            child: Column(
+              children: [
+                Text(
+                  'ENROLLED  vs  CAPTURED',
+                  style: TextStyle(
+                    fontSize: 11,
+                    fontWeight: FontWeight.w700,
+                    color: cs.onSurface.withValues(alpha: 0.5),
+                    letterSpacing: 1.2,
+                  ),
+                ),
+                const SizedBox(height: 14),
+                Row(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Expanded(
+                      child: _FaceCard(
+                        label: 'Enrolled face',
+                        imagePath: _enrolledImagePath,
+                        imageFile: null,
+                        cs: cs,
+                        badge: hasEnrolled
+                            ? null
+                            : const _FaceBadge(
+                                label: 'No image saved',
+                                color: Colors.orange,
+                              ),
+                      ),
+                    ),
+                    Padding(
+                      padding: const EdgeInsets.only(top: 50),
+                      child: Column(
+                        children: [
+                          Container(
+                            width: 32,
+                            height: 32,
+                            decoration: BoxDecoration(
+                              shape: BoxShape.circle,
+                              color: cs.primary.withValues(alpha: 0.1),
+                              border: Border.all(
+                                color: cs.primary.withValues(alpha: 0.3),
+                              ),
+                            ),
+                            child: Icon(
+                              Icons.compare_arrows_rounded,
+                              size: 16,
+                              color: cs.primary,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                    Expanded(
+                      child: _FaceCard(
+                        label: 'Your photo',
+                        imagePath: null,
+                        imageFile: captured,
+                        cs: cs,
+                        badge: const _FaceBadge(
+                          label: 'Just captured',
+                          color: Colors.blue,
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+              ],
+            ),
+          ),
+          const SizedBox(height: 28),
+
+          // Primary action: compare
+          FilledButton.icon(
+            onPressed: _runComparison,
+            icon: const Icon(Icons.compare_rounded, size: 20),
+            label: const Text(
+              'Compare faces',
+              style: TextStyle(fontSize: 15, fontWeight: FontWeight.w600),
+            ),
+            style: FilledButton.styleFrom(
+              padding: const EdgeInsets.symmetric(vertical: 16),
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(14),
+              ),
+            ),
+          ),
+          const SizedBox(height: 12),
+
+          // Secondary action: retake
+          OutlinedButton.icon(
+            onPressed: _retake,
+            icon: const Icon(Icons.replay_rounded, size: 18),
+            label: const Text('Retake photo', style: TextStyle(fontSize: 15)),
+            style: OutlinedButton.styleFrom(
+              padding: const EdgeInsets.symmetric(vertical: 14),
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(14),
+              ),
+            ),
+          ),
+        ],
+      ),
     );
   }
 
@@ -375,10 +593,7 @@ class _BiometricVerificationFlowState extends State<BiometricVerificationFlow> {
           SizedBox(
             width: 56,
             height: 56,
-            child: CircularProgressIndicator(
-              strokeWidth: 3,
-              color: cs.primary,
-            ),
+            child: CircularProgressIndicator(strokeWidth: 3, color: cs.primary),
           ),
           const SizedBox(height: 20),
           Text(
@@ -404,18 +619,27 @@ class _BiometricVerificationFlowState extends State<BiometricVerificationFlow> {
 
   Widget _buildResult(ColorScheme cs) {
     final result = _result!;
-    final Widget card;
 
+    // Face comparison widget shown inside every result card, below the button.
+    final faceComparison = _FaceComparisonWidget(
+      enrolledImagePath: _enrolledImagePath,
+      verificationImage: _verificationImageFile,
+      success: result is LocalVerificationSuccess,
+      result: result,
+    );
+
+    final Widget card;
     switch (result) {
       case LocalVerificationSuccess(:final similarityScore):
         card = BiometricResultCard(
           success: true,
           message: 'Verification successful',
           detail: similarityScore != null
-              ? 'Similarity: ${similarityScore.toStringAsFixed(2)}'
+              ? 'Similarity score: ${(similarityScore * 100).toStringAsFixed(1)}%'
               : null,
           actionLabel: 'Verify again',
           onAction: _retry,
+          bottomWidget: faceComparison,
         );
       case LocalVerificationNoStoredData():
         card = BiometricResultCard(
@@ -425,16 +649,21 @@ class _BiometricVerificationFlowState extends State<BiometricVerificationFlow> {
           actionLabel: 'Retry',
           onAction: _retry,
         );
-      case LocalVerificationEmbeddingMismatch(:final similarityScore, :final message):
+      case LocalVerificationEmbeddingMismatch(
+        :final similarityScore,
+        :final message,
+      ):
         card = BiometricResultCard(
           success: false,
           message: 'Face mismatch',
-          detail: message ??
+          detail:
+              message ??
               (similarityScore != null
-                  ? 'Similarity: ${similarityScore.toStringAsFixed(2)}'
+                  ? 'Similarity score: ${(similarityScore * 100).toStringAsFixed(1)}%'
                   : null),
           actionLabel: 'Try again',
           onAction: _retry,
+          bottomWidget: faceComparison,
         );
       case LocalVerificationSignatureMismatch(:final message):
         card = BiometricResultCard(
@@ -443,6 +672,7 @@ class _BiometricVerificationFlowState extends State<BiometricVerificationFlow> {
           detail: message ?? 'This device is not the one that enrolled.',
           actionLabel: 'Try again',
           onAction: _retry,
+          bottomWidget: faceComparison,
         );
       case LocalVerificationError(:final message):
         card = BiometricResultCard(
@@ -451,14 +681,225 @@ class _BiometricVerificationFlowState extends State<BiometricVerificationFlow> {
           detail: message,
           actionLabel: 'Retry',
           onAction: _retry,
+          bottomWidget: faceComparison,
         );
     }
 
     return SingleChildScrollView(
       padding: const EdgeInsets.all(20),
+      child: card,
+    );
+  }
+}
+
+/// Shows the enrolled face and the verification face side-by-side with
+/// a match/mismatch indicator between them.
+class _FaceComparisonWidget extends StatelessWidget {
+  const _FaceComparisonWidget({
+    required this.enrolledImagePath,
+    required this.verificationImage,
+    required this.success,
+    required this.result,
+  });
+
+  final String? enrolledImagePath;
+  final File? verificationImage;
+  final bool success;
+  final LocalVerificationResult result;
+
+  double? get _similarity {
+    return switch (result) {
+      LocalVerificationSuccess(:final similarityScore) => similarityScore,
+      LocalVerificationEmbeddingMismatch(:final similarityScore) =>
+        similarityScore,
+      _ => null,
+    };
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final cs = Theme.of(context).colorScheme;
+    final matchColor = success ? cs.primary : cs.error;
+
+    return Container(
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: cs.surfaceContainerHighest.withValues(alpha: 0.45),
+        borderRadius: BorderRadius.circular(18),
+        border: Border.all(
+          color: matchColor.withValues(alpha: 0.35),
+          width: 1.5,
+        ),
+      ),
       child: Column(
-        crossAxisAlignment: CrossAxisAlignment.stretch,
-        children: [card],
+        children: [
+          Text(
+            'Face comparison',
+            style: TextStyle(
+              fontSize: 13,
+              fontWeight: FontWeight.w600,
+              color: cs.onSurface.withValues(alpha: 0.65),
+              letterSpacing: 0.4,
+            ),
+          ),
+          const SizedBox(height: 14),
+          Row(
+            children: [
+              // Enrolled face.
+              Expanded(
+                child: _FaceCard(
+                  label: 'Enrolled',
+                  imagePath: enrolledImagePath,
+                  imageFile: null,
+                  cs: cs,
+                ),
+              ),
+              const SizedBox(width: 10),
+              // Match indicator.
+              Column(
+                children: [
+                  Container(
+                    width: 40,
+                    height: 40,
+                    decoration: BoxDecoration(
+                      shape: BoxShape.circle,
+                      color: matchColor.withValues(alpha: 0.12),
+                      border: Border.all(
+                        color: matchColor.withValues(alpha: 0.5),
+                        width: 1.5,
+                      ),
+                    ),
+                    child: Icon(
+                      success ? Icons.check_rounded : Icons.close_rounded,
+                      color: matchColor,
+                      size: 22,
+                    ),
+                  ),
+                  if (_similarity != null) ...[
+                    const SizedBox(height: 6),
+                    Text(
+                      '${(_similarity! * 100).toStringAsFixed(0)}%',
+                      style: TextStyle(
+                        fontSize: 11,
+                        fontWeight: FontWeight.w700,
+                        color: matchColor,
+                      ),
+                    ),
+                  ],
+                ],
+              ),
+              const SizedBox(width: 10),
+              // Verification face.
+              Expanded(
+                child: _FaceCard(
+                  label: 'Captured',
+                  imagePath: null,
+                  imageFile: verificationImage,
+                  cs: cs,
+                ),
+              ),
+            ],
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _FaceCard extends StatelessWidget {
+  const _FaceCard({
+    required this.label,
+    required this.imagePath,
+    required this.imageFile,
+    required this.cs,
+    this.badge,
+  });
+
+  final String label;
+  final String? imagePath;
+  final File? imageFile;
+  final ColorScheme cs;
+  final Widget? badge;
+
+  @override
+  Widget build(BuildContext context) {
+    final File? file =
+        imageFile ?? (imagePath != null ? File(imagePath!) : null);
+    final bool hasImage = file != null && file.existsSync();
+
+    return Column(
+      children: [
+        Stack(
+          children: [
+            ClipRRect(
+              borderRadius: BorderRadius.circular(12),
+              child: AspectRatio(
+                aspectRatio: 3 / 4,
+                child: hasImage
+                    ? Image.file(
+                        file,
+                        fit: BoxFit.cover,
+                        errorBuilder: (_, __, ___) => _placeholder(),
+                      )
+                    : _placeholder(),
+              ),
+            ),
+            if (badge != null)
+              Positioned(bottom: 6, left: 4, right: 4, child: badge!),
+          ],
+        ),
+        const SizedBox(height: 6),
+        Text(
+          label,
+          style: TextStyle(
+            fontSize: 12,
+            fontWeight: FontWeight.w600,
+            color: cs.onSurface.withValues(alpha: 0.7),
+          ),
+          textAlign: TextAlign.center,
+        ),
+      ],
+    );
+  }
+
+  Widget _placeholder() {
+    return Container(
+      color: cs.surfaceContainerHighest,
+      child: Center(
+        child: Icon(
+          Icons.person_rounded,
+          size: 40,
+          color: cs.onSurface.withValues(alpha: 0.3),
+        ),
+      ),
+    );
+  }
+}
+
+class _FaceBadge extends StatelessWidget {
+  const _FaceBadge({required this.label, required this.color});
+
+  final String label;
+  final Color color;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 3),
+      decoration: BoxDecoration(
+        color: color.withValues(alpha: 0.85),
+        borderRadius: BorderRadius.circular(6),
+      ),
+      child: Text(
+        label,
+        style: const TextStyle(
+          color: Colors.white,
+          fontSize: 10,
+          fontWeight: FontWeight.w600,
+        ),
+        textAlign: TextAlign.center,
+        maxLines: 1,
+        overflow: TextOverflow.ellipsis,
       ),
     );
   }

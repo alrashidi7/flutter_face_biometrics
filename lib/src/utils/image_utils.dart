@@ -101,13 +101,10 @@ Future<File> cameraImageToTempFile(
   if (image == null) {
     throw Exception('Failed to convert CameraImage');
   }
-  // Rotate so face is upright for face verification (which reads file without rotation metadata).
-  // If extraction still fails, getEmbeddingFromFile retries with 90°/180°/270° rotations.
+  // Rotate so face is upright. img.copyRotate uses clockwise degrees and
+  // sensorOrientation is already the CW angle needed to bring the image upright.
   if (sensorOrientation != 0) {
-    final angle = (360 - sensorOrientation) % 360;
-    if (angle != 0) {
-      image = img.copyRotate(image, angle: angle.toDouble());
-    }
+    image = img.copyRotate(image, angle: sensorOrientation.toDouble());
   }
   final jpeg = img.encodeJpg(image, quality: 95);
   if (jpeg.isEmpty) throw Exception('Failed to encode image as JPEG');

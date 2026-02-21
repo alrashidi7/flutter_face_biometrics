@@ -1,6 +1,9 @@
 import 'package:flutter/material.dart';
 
 /// Result card for biometric verification – success or mismatch.
+///
+/// Use [bottomWidget] to embed any widget (e.g. a face comparison) below
+/// the action button, still inside the card's styled container.
 class BiometricResultCard extends StatelessWidget {
   const BiometricResultCard({
     super.key,
@@ -9,6 +12,7 @@ class BiometricResultCard extends StatelessWidget {
     this.detail,
     this.onAction,
     this.actionLabel,
+    this.bottomWidget,
   });
 
   final bool success;
@@ -16,6 +20,9 @@ class BiometricResultCard extends StatelessWidget {
   final String? detail;
   final VoidCallback? onAction;
   final String? actionLabel;
+
+  /// Optional widget rendered below the action button inside the card.
+  final Widget? bottomWidget;
 
   @override
   Widget build(BuildContext context) {
@@ -77,6 +84,15 @@ class BiometricResultCard extends StatelessWidget {
                 child: Text(actionLabel!),
               ),
             ),
+          ],
+          if (bottomWidget != null) ...[
+            const SizedBox(height: 20),
+            Divider(
+              color: (success ? cs.primary : cs.error).withValues(alpha: 0.2),
+              thickness: 1,
+            ),
+            const SizedBox(height: 16),
+            bottomWidget!,
           ],
         ],
       ),

@@ -395,11 +395,10 @@
       ]
     },
     {
-      "name": "flutter_root_jailbreak_checker",
-      "version": "2.1.5",
+      "name": "biometric_signature",
+      "version": "8.5.0",
       "dependencies": [
         "flutter",
-        "http",
         "plugin_platform_interface"
       ]
     },
@@ -411,10 +410,11 @@
       ]
     },
     {
-      "name": "biometric_signature",
-      "version": "8.5.0",
+      "name": "flutter_root_jailbreak_checker",
+      "version": "2.1.5",
       "dependencies": [
         "flutter",
+        "http",
         "plugin_platform_interface"
       ]
     },

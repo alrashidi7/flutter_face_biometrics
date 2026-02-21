@@ -135,12 +135,30 @@ class _BiometricEnrollmentFlowState extends State<BiometricEnrollmentFlow> {
         _showScanner = false;
         _status = 'Done – ready to save';
       });
-    }).catchError((e) {
+    }).catchError((Object e) {
       if (!mounted) return;
+      final message = e is Exception ? e.toString() : 'Capture failed – try again';
       setState(() {
         _step = 0;
-        _status = 'Error: $e';
+        _showScanner = true;
+        _data = null;
+        _enrolledImageFile = null;
+        _status = 'Position your face and blink to capture';
       });
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(message),
+          backgroundColor: Colors.red.shade700,
+          behavior: SnackBarBehavior.floating,
+          duration: const Duration(seconds: 5),
+          action: SnackBarAction(
+            label: 'Dismiss',
+            textColor: Colors.white,
+            onPressed: () =>
+                ScaffoldMessenger.of(context).hideCurrentSnackBar(),
+          ),
+        ),
+      );
       widget.onError?.call(e);
     });
   }
@@ -155,6 +173,14 @@ class _BiometricEnrollmentFlowState extends State<BiometricEnrollmentFlow> {
       widget.onSaved?.call(_data!);
     } catch (e) {
       if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('Save failed: $e'),
+          backgroundColor: Colors.red.shade700,
+          behavior: SnackBarBehavior.floating,
+          duration: const Duration(seconds: 5),
+        ),
+      );
       widget.onError?.call(e);
     } finally {
       if (mounted) setState(() => _saving = false);
@@ -164,8 +190,25 @@ class _BiometricEnrollmentFlowState extends State<BiometricEnrollmentFlow> {
   void _onError(BiometricExportException e) {
     setState(() {
       _step = 0;
-      _status = 'Error: $e';
+      _showScanner = true;
+      _data = null;
+      _enrolledImageFile = null;
+      _status = 'Position your face and blink to capture';
     });
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text(e.toString()),
+        backgroundColor: Colors.red.shade700,
+        behavior: SnackBarBehavior.floating,
+        duration: const Duration(seconds: 5),
+        action: SnackBarAction(
+          label: 'Dismiss',
+          textColor: Colors.white,
+          onPressed: () =>
+              ScaffoldMessenger.of(context).hideCurrentSnackBar(),
+        ),
+      ),
+    );
     widget.onError?.call(e);
   }
 
