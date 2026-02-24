@@ -1,70 +1,15 @@
 import 'dart:io';
 
-import 'package:camera/camera.dart';
 import 'package:image/image.dart' as img;
 import 'package:path/path.dart' as path;
 import 'package:path_provider/path_provider.dart';
 import 'package:tensorflow_face_verification/tensorflow_face_verification.dart';
 
 import 'export_errors.dart';
-import 'utils/image_utils.dart';
 
 /// Default path to the FaceNet TFLite model in assets.
 /// App must include this asset (e.g. from package or app assets).
 const String kDefaultFacenetModelPath = 'assets/models/facenet.tflite';
-
-/// Service for extracting face embeddings from [CameraImage] or [File].
-/// Wraps [FaceEmbeddingExport] and adds [extractEmbedding] for camera frames.
-class FaceEmbeddingService {
-  FaceEmbeddingService({required this.modelPath})
-      : _export = FaceEmbeddingExport(modelPath: modelPath);
-
-  final String modelPath;
-  final FaceEmbeddingExport _export;
-
-  /// Initializes the FaceNet model. Call before extracting embeddings.
-  Future<void> init() => _export.init();
-
-  /// Extracts a 128D face embedding from [cameraImage].
-  ///
-  /// Saves the image to a temp file, then uses tensorflow_face_verification
-  /// to extract the face region and compute the embedding.
-  ///
-  /// Throws [NoFaceDetectedException], [MultipleFacesDetectedException], [EmbeddingException].
-  Future<List<double>> extractEmbedding(CameraImage cameraImage) async {
-    final image = cameraImageToImage(cameraImage);
-    if (image == null) {
-      throw EmbeddingException(
-        'Failed to convert CameraImage',
-        'Format: ${cameraImage.format.group}',
-      );
-    }
-
-    final tempDir = await getTemporaryDirectory();
-    final tempFile = File(
-      path.join(
-        tempDir.path,
-        'flutter_face_biometrics_${DateTime.now().millisecondsSinceEpoch}.jpg',
-      ),
-    );
-    try {
-      final jpeg = img.encodeJpg(image);
-      if (jpeg.isEmpty) throw EmbeddingException('Failed to encode image as JPEG');
-      await tempFile.writeAsBytes(jpeg);
-      return _export.getEmbeddingFromFile(tempFile);
-    } finally {
-      if (await tempFile.exists()) {
-        try {
-          await tempFile.delete();
-        } catch (_) {}
-      }
-    }
-  }
-
-  /// Extracts embedding from a file path (e.g. from saved selfie).
-  Future<List<double>> extractEmbeddingFromFile(File file) =>
-      _export.getEmbeddingFromFile(file);
-}
 
 /// Extracts a high-dimensional face embedding from an image file using
 /// [tensorflow_face_verification] (FaceNet). Call [init] once before use.

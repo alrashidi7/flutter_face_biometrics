@@ -3,7 +3,7 @@
   "packages": [
     {
       "name": "archive",
-      "rootUri": "file:///Users/mahmoudalrashidi/.pub-cache/hosted/pub.dev/archive-4.0.7",
+      "rootUri": "file:///Users/mahmoudalrashidi/.pub-cache/hosted/pub.dev/archive-4.0.9",
       "packageUri": "lib/",
       "languageVersion": "3.0"
     },
@@ -27,7 +27,7 @@
     },
     {
       "name": "camera",
-      "rootUri": "file:///Users/mahmoudalrashidi/.pub-cache/hosted/pub.dev/camera-0.11.3+1",
+      "rootUri": "file:///Users/mahmoudalrashidi/.pub-cache/hosted/pub.dev/camera-0.11.4",
       "packageUri": "lib/",
       "languageVersion": "3.9"
     },
@@ -57,7 +57,7 @@
     },
     {
       "name": "characters",
-      "rootUri": "file:///Users/mahmoudalrashidi/.pub-cache/hosted/pub.dev/characters-1.4.0",
+      "rootUri": "file:///Users/mahmoudalrashidi/.pub-cache/hosted/pub.dev/characters-1.4.1",
       "packageUri": "lib/",
       "languageVersion": "3.4"
     },
@@ -135,9 +135,9 @@
     },
     {
       "name": "flutter",
-      "rootUri": "file:///Users/mahmoudalrashidi/fvm/versions/3.38.7/packages/flutter",
+      "rootUri": "file:///Users/mahmoudalrashidi/fvm/3.41.1/packages/flutter",
       "packageUri": "lib/",
-      "languageVersion": "3.8"
+      "languageVersion": "3.9"
     },
     {
       "name": "flutter_lints",
@@ -159,15 +159,15 @@
     },
     {
       "name": "flutter_test",
-      "rootUri": "file:///Users/mahmoudalrashidi/fvm/versions/3.38.7/packages/flutter_test",
+      "rootUri": "file:///Users/mahmoudalrashidi/fvm/3.41.1/packages/flutter_test",
       "packageUri": "lib/",
-      "languageVersion": "3.8"
+      "languageVersion": "3.9"
     },
     {
       "name": "flutter_web_plugins",
-      "rootUri": "file:///Users/mahmoudalrashidi/fvm/versions/3.38.7/packages/flutter_web_plugins",
+      "rootUri": "file:///Users/mahmoudalrashidi/fvm/3.41.1/packages/flutter_web_plugins",
       "packageUri": "lib/",
-      "languageVersion": "3.8"
+      "languageVersion": "3.9"
     },
     {
       "name": "glob",
@@ -207,7 +207,7 @@
     },
     {
       "name": "image",
-      "rootUri": "file:///Users/mahmoudalrashidi/.pub-cache/hosted/pub.dev/image-4.7.2",
+      "rootUri": "file:///Users/mahmoudalrashidi/.pub-cache/hosted/pub.dev/image-4.8.0",
       "packageUri": "lib/",
       "languageVersion": "3.0"
     },
@@ -219,7 +219,7 @@
     },
     {
       "name": "image_picker_android",
-      "rootUri": "file:///Users/mahmoudalrashidi/.pub-cache/hosted/pub.dev/image_picker_android-0.8.13+13",
+      "rootUri": "file:///Users/mahmoudalrashidi/.pub-cache/hosted/pub.dev/image_picker_android-0.8.13+14",
       "packageUri": "lib/",
       "languageVersion": "3.9"
     },
@@ -291,15 +291,15 @@
     },
     {
       "name": "matcher",
-      "rootUri": "file:///Users/mahmoudalrashidi/.pub-cache/hosted/pub.dev/matcher-0.12.17",
+      "rootUri": "file:///Users/mahmoudalrashidi/.pub-cache/hosted/pub.dev/matcher-0.12.18",
       "packageUri": "lib/",
-      "languageVersion": "3.4"
+      "languageVersion": "3.7"
     },
     {
       "name": "material_color_utilities",
-      "rootUri": "file:///Users/mahmoudalrashidi/.pub-cache/hosted/pub.dev/material_color_utilities-0.11.1",
+      "rootUri": "file:///Users/mahmoudalrashidi/.pub-cache/hosted/pub.dev/material_color_utilities-0.13.0",
       "packageUri": "lib/",
-      "languageVersion": "2.17"
+      "languageVersion": "3.5"
     },
     {
       "name": "meta",
@@ -387,7 +387,7 @@
     },
     {
       "name": "posix",
-      "rootUri": "file:///Users/mahmoudalrashidi/.pub-cache/hosted/pub.dev/posix-6.0.3",
+      "rootUri": "file:///Users/mahmoudalrashidi/.pub-cache/hosted/pub.dev/posix-6.5.0",
       "packageUri": "lib/",
       "languageVersion": "3.0"
     },
@@ -405,15 +405,15 @@
     },
     {
       "name": "secure_device_signature",
-      "rootUri": "file:///Users/mahmoudalrashidi/.pub-cache/git/secure_device_signature-feab2d4004ca047af27b9532a8f1939953c460f2/",
+      "rootUri": "file:///Users/mahmoudalrashidi/.pub-cache/git/secure_device_signature-f2e1e5d4d98daa481fd376fdc2f0e659515749cc/",
       "packageUri": "lib/",
       "languageVersion": "3.0"
     },
     {
       "name": "sky_engine",
-      "rootUri": "file:///Users/mahmoudalrashidi/fvm/versions/3.38.7/bin/cache/pkg/sky_engine",
+      "rootUri": "file:///Users/mahmoudalrashidi/fvm/3.41.1/bin/cache/pkg/sky_engine",
       "packageUri": "lib/",
-      "languageVersion": "3.8"
+      "languageVersion": "3.9"
     },
     {
       "name": "source_span",
@@ -459,9 +459,9 @@
     },
     {
       "name": "test_api",
-      "rootUri": "file:///Users/mahmoudalrashidi/.pub-cache/hosted/pub.dev/test_api-0.7.7",
+      "rootUri": "file:///Users/mahmoudalrashidi/.pub-cache/hosted/pub.dev/test_api-0.7.9",
       "packageUri": "lib/",
-      "languageVersion": "3.5"
+      "languageVersion": "3.7"
     },
     {
       "name": "tflite_flutter",
@@ -519,8 +519,8 @@
     }
   ],
   "generator": "pub",
-  "generatorVersion": "3.10.7",
-  "flutterRoot": "file:///Users/mahmoudalrashidi/fvm/versions/3.38.7",
-  "flutterVersion": "3.38.7",
+  "generatorVersion": "3.11.0",
+  "flutterRoot": "file:///Users/mahmoudalrashidi/fvm/3.41.1",
+  "flutterVersion": "3.41.1",
   "pubCache": "file:///Users/mahmoudalrashidi/.pub-cache"
 }

@@ -1,29 +1,30 @@
 import 'dart:io';
 
+import 'package:flutter/material.dart';
+import 'package:flutter_face_biometrics/face_liveness.dart';
+import 'package:image_picker/image_picker.dart';
 import 'package:secure_device_signature/device_integrity_signature.dart'
     as device_integrity;
-import 'package:flutter/material.dart';
 
 import '../biometric_export_service.dart';
 import '../biometric_local_storage.dart';
 import '../flutter_face_biometrics_config.dart';
-import '../export_errors.dart';
 import '../export_models.dart';
-import '../face_liveness_scanner.dart';
 import 'biometric_info_section.dart';
 import 'biometric_result_card.dart';
 
-/// Complete drop-in enrollment flow: liveness → embedding → sign → save.
+/// Complete drop-in enrollment flow: liveness or upload → embedding → optional sign → save.
 ///
-/// - Hero header ("We secure you")
-/// - FaceLivenessScanner with face oval overlay
-/// - Checklist: Position face → Blink → Extract embedding → Sign → Done
-/// - Expandable info section
-/// - Save button, success card
+/// - [enrollmentMode]: [EnrollmentMode.livenessSelfie] for live blink capture, or
+///   [EnrollmentMode.uploadImage] for picking/uploading an image.
+/// - [useSignature]: Optional. Default false. Set true only when you need device
+///   verification via secure_device_signature.
+/// - Returns embedding to [onSaved] and optionally saves via [storage].
 class BiometricEnrollmentFlow extends StatefulWidget {
   const BiometricEnrollmentFlow({
     super.key,
     this.config,
+    this.enrollmentMode = EnrollmentMode.livenessSelfie,
     this.title = 'We secure you',
     this.subtitle = 'Enroll your face to protect your identity',
     this.service,
@@ -32,6 +33,8 @@ class BiometricEnrollmentFlow extends StatefulWidget {
     this.useSignature = false,
     this.onSaved,
     this.onError,
+    this.onEmbeddingExtracted,
+    this.livenessConfig,
     this.showInfoSection = true,
   });
 
@@ -39,19 +42,34 @@ class BiometricEnrollmentFlow extends StatefulWidget {
   /// is true, [service] and [storage] must be provided (no internal creation).
   final FlutterFaceBiometricsConfig? config;
 
+  /// How to enroll: liveness selfie (blink) or upload image.
+  /// Default [EnrollmentMode.livenessSelfie].
+  final EnrollmentMode enrollmentMode;
+
   /// Optional model path for FaceNet (e.g. 'packages/flutter_face_biometrics/assets/models/facenet.tflite').
   final String? modelPath;
 
-  /// If true and [service] is null, uses [SignatureService] to sign the embedding (device verification).
-  /// If false, generates embedding only (default).
+  /// If true and [service] is null, uses [SignatureService] (requires secure_device_signature).
+  /// Default false — embedding only, no device signature.
   final bool useSignature;
 
   final String title;
   final String subtitle;
   final BiometricExportService? service;
   final BiometricLocalStorage? storage;
+
+  /// Called when enrollment completes with full export data (embedding + optional signature).
   final void Function(BiometricExportData data)? onSaved;
+
+  /// Called when only embedding is needed — e.g. when storage is null and app handles persistence.
+  /// Receives (embedding, imageFile). Use for headless flows or custom storage.
+  final void Function(List<double> embedding, File imageFile)? onEmbeddingExtracted;
+
   final void Function(Object error)? onError;
+
+  /// Liveness thresholds when [enrollmentMode] is [EnrollmentMode.livenessSelfie].
+  final LivenessConfig? livenessConfig;
+
   final bool showInfoSection;
 
   @override
@@ -139,6 +157,7 @@ class _BiometricEnrollmentFlowState extends State<BiometricEnrollmentFlow> {
         _showScanner = false;
         _status = 'Done – ready to save';
       });
+      widget.onEmbeddingExtracted?.call(data.embedding, faceCrop ?? imageFile);
     }).catchError((Object e) {
       if (!mounted) return;
       final message = e is Exception ? e.toString() : 'Capture failed – try again';
@@ -254,11 +273,13 @@ class _BiometricEnrollmentFlowState extends State<BiometricEnrollmentFlow> {
                 _buildChecklist(cs),
                 const SizedBox(height: 16),
                 if (!_showScanner) _buildResult(cs),
+        if (_showScanner && widget.enrollmentMode == EnrollmentMode.uploadImage)
+          _buildUploadSection(cs),
               ],
             ),
           ),
         ),
-        if (_showScanner)
+        if (_showScanner && widget.enrollmentMode == EnrollmentMode.livenessSelfie)
           SizedBox(
             height: (MediaQuery.of(context).size.height * 0.42).clamp(280.0, 420.0),
             child: Padding(
@@ -400,14 +421,66 @@ class _BiometricEnrollmentFlowState extends State<BiometricEnrollmentFlow> {
     );
   }
 
+  Future<void> _pickAndExtractImage() async {
+    final picker = ImagePicker();
+    final xFile = await picker.pickImage(source: ImageSource.gallery);
+    if (xFile == null || !mounted) return;
+
+    setState(() {
+      _step = 2;
+      _status = 'Extracting face and embedding...';
+    });
+
+    final file = File(xFile.path);
+    _service.buildExportDataFromFile(file).then((data) async {
+      if (!mounted) return;
+      final faceCrop = await _service.extractFaceCropFile(file);
+      if (!mounted) return;
+      setState(() {
+        _step = widget.useSignature ? 4 : 3;
+        _data = data;
+        _enrolledImageFile = faceCrop ?? file;
+        _showScanner = false;
+        _status = 'Done – ready to save';
+      });
+      widget.onEmbeddingExtracted?.call(data.embedding, faceCrop ?? file);
+    }).catchError((Object e) {
+      if (!mounted) return;
+      setState(() {
+        _step = 0;
+        _data = null;
+        _enrolledImageFile = null;
+        _status = 'Upload an image with a clear face';
+      });
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(e is Exception ? e.toString() : 'Failed – try another image'),
+          backgroundColor: Colors.red.shade700,
+          behavior: SnackBarBehavior.floating,
+          duration: const Duration(seconds: 5),
+        ),
+      );
+      widget.onError?.call(e);
+    });
+  }
+
   Widget _buildChecklist(ColorScheme cs) {
-    final steps = [
-      'Position face',
-      'Blink to capture',
-      'Extract embedding',
-      if (widget.useSignature) 'Sign with device key',
-      'Done',
-    ];
+    final isLiveness = widget.enrollmentMode == EnrollmentMode.livenessSelfie;
+    final steps = isLiveness
+        ? [
+            'Position face',
+            'Blink to capture',
+            'Extract embedding',
+            if (widget.useSignature) 'Sign with device key',
+            'Done',
+          ]
+        : [
+            'Upload image',
+            'Extract face',
+            'Extract embedding',
+            if (widget.useSignature) 'Sign with device key',
+            'Done',
+          ];
     final doneStep = steps.length - 1;
 
     return Container(
@@ -482,6 +555,56 @@ class _BiometricEnrollmentFlowState extends State<BiometricEnrollmentFlow> {
     );
   }
 
+  Widget _buildUploadSection(ColorScheme cs) {
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(0, 16, 0, 24),
+      child: Material(
+        color: cs.surfaceContainerHighest.withValues(alpha: 0.5),
+        borderRadius: BorderRadius.circular(16),
+        child: InkWell(
+          onTap: _pickAndExtractImage,
+          borderRadius: BorderRadius.circular(16),
+          child: Padding(
+            padding: const EdgeInsets.all(24),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Icon(Icons.photo_library_rounded, size: 48, color: cs.primary),
+                const SizedBox(height: 12),
+                Text(
+                  'Upload image',
+                  style: TextStyle(
+                    fontSize: 17,
+                    fontWeight: FontWeight.w600,
+                    color: cs.onSurface,
+                  ),
+                ),
+                const SizedBox(height: 4),
+                Text(
+                  'Pick a photo with a clear face. We\'ll extract the face and embedding.',
+                  textAlign: TextAlign.center,
+                  style: TextStyle(
+                    fontSize: 14,
+                    color: cs.onSurface.withValues(alpha: 0.65),
+                  ),
+                ),
+                const SizedBox(height: 16),
+                FilledButton.icon(
+                  onPressed: _pickAndExtractImage,
+                  icon: const Icon(Icons.add_photo_alternate_rounded, size: 20),
+                  label: const Text('Choose image'),
+                  style: FilledButton.styleFrom(
+                    padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 12),
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+
   Widget _buildScanner() {
     return ClipRRect(
       borderRadius: BorderRadius.circular(16),
@@ -497,19 +620,11 @@ class _BiometricEnrollmentFlowState extends State<BiometricEnrollmentFlow> {
             ),
           ],
         ),
-        child: Stack(
-          children: [
-            FaceLivenessScanner(
-              onCaptured: _onCaptured,
-              onError: _onError,
-              instructionText: _status,
-            ),
-            Positioned.fill(
-              child: CustomPaint(
-                painter: _FaceOvalPainter(),
-              ),
-            ),
-          ],
+        child: FaceLivenessScanner(
+          config: widget.livenessConfig,
+          onCaptured: _onCaptured,
+          onError: _onError,
+          instructionText: _status,
         ),
       ),
     );
@@ -535,26 +650,4 @@ class _BiometricEnrollmentFlowState extends State<BiometricEnrollmentFlow> {
       ],
     );
   }
-}
-
-/// Face oval overlay for the camera preview.
-class _FaceOvalPainter extends CustomPainter {
-  @override
-  void paint(Canvas canvas, Size size) {
-    final paint = Paint()
-      ..color = Colors.white.withValues(alpha: 0.15)
-      ..style = PaintingStyle.stroke
-      ..strokeWidth = 3;
-
-    final center = Offset(size.width / 2, size.height / 2);
-    final ovalRect = Rect.fromCenter(
-      center: center,
-      width: size.width * 0.9,
-      height: size.height * 0.8,
-    );
-    canvas.drawOval(ovalRect, paint);
-  }
-
-  @override
-  bool shouldRepaint(covariant CustomPainter oldDelegate) => false;
 }

@@ -1,3 +1,18 @@
+/// How to enroll a face: liveness selfie (blink detection) or upload an image.
+///
+/// - [livenessSelfie]: User takes a live selfie with blink detection. Best for
+///   high-security flows where you need to verify the face is live.
+/// - [uploadImage]: User uploads/picks an image. Package extracts face and
+///   returns embedding. No liveness check. Use when the app handles identity
+///   verification separately (e.g. ID document + selfie upload).
+enum EnrollmentMode {
+  /// Live selfie with blink detection (FaceLivenessScanner).
+  livenessSelfie,
+
+  /// Upload or pick an image; package extracts face and returns embedding.
+  uploadImage,
+}
+
 /// Result of the export flow: liveness → embedding, optionally + device signature.
 ///
 /// [embedding] is the high-dimensional face embedding (e.g. 128D from FaceNet).

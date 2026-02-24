@@ -81,7 +81,7 @@
     },
     {
       "name": "image",
-      "version": "4.7.2",
+      "version": "4.8.0",
       "dependencies": [
         "archive",
         "meta",
@@ -131,7 +131,7 @@
     },
     {
       "name": "camera",
-      "version": "0.11.3+1",
+      "version": "0.11.4",
       "dependencies": [
         "camera_android_camerax",
         "camera_avfoundation",
@@ -213,7 +213,7 @@
     },
     {
       "name": "matcher",
-      "version": "0.12.17",
+      "version": "0.12.18",
       "dependencies": [
         "async",
         "meta",
@@ -224,7 +224,7 @@
     },
     {
       "name": "test_api",
-      "version": "0.7.7",
+      "version": "0.7.9",
       "dependencies": [
         "async",
         "boolean_selector",
@@ -298,7 +298,7 @@
     },
     {
       "name": "image_picker_android",
-      "version": "0.8.13+13",
+      "version": "0.8.13+14",
       "dependencies": [
         "flutter",
         "flutter_plugin_android_lifecycle",
@@ -364,9 +364,8 @@
     },
     {
       "name": "archive",
-      "version": "4.0.7",
+      "version": "4.0.9",
       "dependencies": [
-        "crypto",
         "path",
         "posix"
       ]
@@ -491,14 +490,14 @@
     },
     {
       "name": "material_color_utilities",
-      "version": "0.11.1",
+      "version": "0.13.0",
       "dependencies": [
         "collection"
       ]
     },
     {
       "name": "characters",
-      "version": "1.4.0",
+      "version": "1.4.1",
       "dependencies": []
     },
     {
@@ -655,7 +654,7 @@
     },
     {
       "name": "posix",
-      "version": "6.0.3",
+      "version": "6.5.0",
       "dependencies": [
         "ffi",
         "meta",

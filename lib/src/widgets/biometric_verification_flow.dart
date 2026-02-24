@@ -19,6 +19,8 @@ class BiometricVerificationFlow extends StatefulWidget {
     this.modelPath,
     this.useSignature = false,
     this.similarityThreshold,
+    this.livenessConfig,
+    this.customMatcher,
     this.onVerified,
     this.onError,
   });
@@ -42,6 +44,13 @@ class BiometricVerificationFlow extends StatefulWidget {
   final BiometricExportService? service;
   final BiometricLocalStorage? storage;
   final BiometricLocalVerifier? verifier;
+
+  /// Liveness thresholds for camera verification.
+  final LivenessConfig? livenessConfig;
+
+  /// Custom face matching. When provided, used instead of default FaceNet similarity.
+  final FaceMatcher? customMatcher;
+
   final void Function(LocalVerificationSuccess result)? onVerified;
   final void Function(LocalVerificationResult result)? onError;
 
@@ -107,6 +116,7 @@ class _BiometricVerificationFlowState extends State<BiometricVerificationFlow> {
           similarityThreshold:
               widget.similarityThreshold ?? kDefaultSimilarityThreshold,
           embeddingExtractor: (f) => _service.getEmbeddingFromFile(f),
+          customMatcher: widget.customMatcher,
         );
     _initialize();
   }
@@ -321,7 +331,7 @@ class _BiometricVerificationFlowState extends State<BiometricVerificationFlow> {
                 body: BiometricEnrollmentFlow(
                   title: 'We secure you',
                   subtitle: 'Enroll your face to protect your identity',
-                  useSignature: true,
+                  useSignature: false,
                   onSaved: (BiometricExportData data) {
                     // Optionally upload to server
                     // await exportService.verifyAndUploadBiometricData(registerUrl, data);
@@ -413,7 +423,7 @@ class _BiometricVerificationFlowState extends State<BiometricVerificationFlow> {
                     body: BiometricEnrollmentFlow(
                       title: 'We secure you',
                       subtitle: 'Enroll your face to protect your identity',
-                      useSignature: true,
+                      useSignature: false,
                       onSaved: (BiometricExportData data) {
                         // Optionally upload to server
                         // await exportService.verifyAndUploadBiometricData(registerUrl, data);
@@ -460,6 +470,7 @@ class _BiometricVerificationFlowState extends State<BiometricVerificationFlow> {
             child: ClipRRect(
               borderRadius: BorderRadius.circular(16),
               child: FaceLivenessScanner(
+                config: widget.livenessConfig,
                 onCaptured: _onCaptured,
                 onError: _onScanError,
                 instructionText: 'Position your face and blink to capture',

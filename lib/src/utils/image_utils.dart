@@ -1,10 +1,7 @@
-import 'dart:io';
 import 'dart:typed_data';
 
 import 'package:camera/camera.dart';
 import 'package:image/image.dart' as img;
-import 'package:path/path.dart' as path;
-import 'package:path_provider/path_provider.dart';
 
 /// Converts [CameraImage] to NV21 bytes for ML Kit InputImage (Android).
 (Uint8List nv21, int width, int height) cameraImageToNv21(CameraImage cameraImage) {
@@ -86,35 +83,4 @@ img.Image _bgra8888ToImage(CameraImage cameraImage) {
     bytes: bytes.buffer,
     order: img.ChannelOrder.bgra,
   );
-}
-
-/// Saves [cameraImage] to a temp JPEG file and returns it.
-///
-/// [sensorOrientation] should be the camera's sensor orientation (0, 90, 180, 270).
-/// When provided and non-zero, the image is rotated so the face is upright,
-/// matching what tensorflow_face_verification expects when reading the file.
-Future<File> cameraImageToTempFile(
-  CameraImage cameraImage, {
-  int sensorOrientation = 0,
-}) async {
-  img.Image? image = cameraImageToImage(cameraImage);
-  if (image == null) {
-    throw Exception('Failed to convert CameraImage');
-  }
-  // Rotate so face is upright. img.copyRotate uses clockwise degrees and
-  // sensorOrientation is already the CW angle needed to bring the image upright.
-  if (sensorOrientation != 0) {
-    image = img.copyRotate(image, angle: sensorOrientation.toDouble());
-  }
-  final jpeg = img.encodeJpg(image, quality: 95);
-  if (jpeg.isEmpty) throw Exception('Failed to encode image as JPEG');
-  final tempDir = await getTemporaryDirectory();
-  final file = File(
-    path.join(
-      tempDir.path,
-      'flutter_face_biometrics_${DateTime.now().millisecondsSinceEpoch}.jpg',
-    ),
-  );
-  await file.writeAsBytes(jpeg);
-  return file;
 }

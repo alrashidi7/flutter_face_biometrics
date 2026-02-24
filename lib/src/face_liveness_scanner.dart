@@ -9,36 +9,12 @@ import 'package:path/path.dart' as path;
 import 'package:path_provider/path_provider.dart';
 
 import 'export_errors.dart';
+import 'liveness_config.dart';
 import 'utils/image_utils.dart';
 
-// ─── Liveness thresholds ──────────────────────────────────────────────────────
-const double _kEyeClosedThreshold = 0.25;
-const double _kEyeOpenThreshold = 0.45;
-
 // ─── Oval guide ───────────────────────────────────────────────────────────────
-/// Normalized half-axes of the face oval guide.
-/// Wider than the visual oval to account for ML Kit reporting face center in
-/// sensor coordinates which can differ from the displayed preview coordinates.
 const double _kOvalHalfWidth = 0.42;
 const double _kOvalHalfHeight = 0.40;
-
-// ─── Face size ────────────────────────────────────────────────────────────────
-const double _kFaceSizeMin = 0.18;
-const double _kFaceSizeMax = 0.55;
-
-// ─── Head pose thresholds (degrees) ──────────────────────────────────────────
-/// Max yaw (Y-axis, left/right turn).
-const double _kMaxYawDeg = 20.0;
-
-/// Max roll (Z-axis, tilt).
-const double _kMaxRollDeg = 20.0;
-
-/// Max pitch (X-axis, nod up/down).
-const double _kMaxPitchDeg = 20.0;
-
-/// Min eye-open probability for the progress chip indicator only.
-/// Not used as a blocking gate — blink detection handles eye-open verification.
-const double _kEyesOpenMin = 0.50;
 
 // ─── Progress ─────────────────────────────────────────────────────────────────
 /// Tracks which scan conditions the user has satisfied.
@@ -75,28 +51,38 @@ class ScanProgress {
 ///  5. Both eyes open and directed at the camera.
 ///  6. Blink (close → open) to confirm liveness.
 ///
-/// The saved capture is **cropped to the face region** (with padding) so the
-/// embedding model receives the face only — no background noise.
+/// Returns the full selfie frame as a temp JPEG — use for embedding extraction,
+/// verification, or your own processing.
+///
+/// **Standalone use** (no enrollment/embedding):
+/// ```dart
+/// FaceLivenessScanner(
+///   onCaptured: (File image) {
+///     // Use image — extract embedding, send to your backend, etc.
+///   },
+///   onError: (e) => ...,
+/// )
+/// ```
 class FaceLivenessScanner extends StatefulWidget {
   const FaceLivenessScanner({
     super.key,
     required this.onCaptured,
     required this.onError,
+    this.config,
     this.instructionText = 'Position your face and blink to capture',
-    this.minFaceSize = 0.15,
   });
 
-  /// Called with a face-cropped temp JPEG when liveness passes.
+  /// Called with a temp JPEG when liveness passes. Full selfie frame.
   final void Function(File imageFile) onCaptured;
 
   /// Called when an error occurs.
   final void Function(BiometricExportException) onError;
 
+  /// Liveness thresholds. Default [LivenessConfig.defaultConfig].
+  final LivenessConfig? config;
+
   /// Shown above the camera preview.
   final String instructionText;
-
-  /// Minimum face size (0.0–1.0) for ML Kit.
-  final double minFaceSize;
 
   @override
   State<FaceLivenessScanner> createState() => _FaceLivenessScannerState();
@@ -107,16 +93,7 @@ class _FaceLivenessScannerState extends State<FaceLivenessScanner>
   CameraController? _controller;
   List<CameraDescription> _cameras = [];
 
-  final FaceDetector _faceDetector = FaceDetector(
-    options: FaceDetectorOptions(
-      performanceMode: FaceDetectorMode.accurate,
-      minFaceSize: 0.15,
-      enableLandmarks: true,
-      enableContours: false,
-      enableClassification: true,
-      enableTracking: false,
-    ),
-  );
+  late final FaceDetector _faceDetector;
 
   bool _isProcessing = false;
   bool _isStreaming = false;
@@ -140,9 +117,22 @@ class _FaceLivenessScannerState extends State<FaceLivenessScanner>
     duration: const Duration(milliseconds: 1200),
   )..repeat(reverse: true);
 
+  LivenessConfig get _config =>
+      widget.config ?? LivenessConfig.defaultConfig;
+
   @override
   void initState() {
     super.initState();
+    _faceDetector = FaceDetector(
+      options: FaceDetectorOptions(
+        performanceMode: FaceDetectorMode.accurate,
+        minFaceSize: _config.minFaceSize,
+        enableLandmarks: true,
+        enableContours: false,
+        enableClassification: true,
+        enableTracking: false,
+      ),
+    );
     _initCamera();
   }
 
@@ -237,26 +227,26 @@ class _FaceLivenessScannerState extends State<FaceLivenessScanner>
     final faceSizeNorm =
         (rect.width / imageWidth + rect.height / imageHeight) / 2;
 
+    final c = _config;
     final inOval = _isInsideOval(nx, ny);
     final goodSize =
-        faceSizeNorm >= _kFaceSizeMin && faceSizeNorm <= _kFaceSizeMax;
+        faceSizeNorm >= c.faceSizeMin && faceSizeNorm <= c.faceSizeMax;
 
-    // All three head pose axes must be within threshold for a 90° straight shot.
     final yaw = face.headEulerAngleY ?? 0.0;
     final roll = face.headEulerAngleZ ?? 0.0;
     final pitch = face.headEulerAngleX ?? 0.0;
     final anglesAvailable = face.headEulerAngleY != null &&
         face.headEulerAngleZ != null;
     final lookingAtCamera = !anglesAvailable ||
-        (yaw.abs() <= _kMaxYawDeg &&
-            roll.abs() <= _kMaxRollDeg &&
-            pitch.abs() <= _kMaxPitchDeg);
+        (yaw.abs() <= c.maxYawDeg &&
+            roll.abs() <= c.maxRollDeg &&
+            pitch.abs() <= c.maxPitchDeg);
 
-    // Both eyes must be clearly open and directed at the lens.
     final leftEyeOpen = face.leftEyeOpenProbability ?? 0.0;
     final rightEyeOpen = face.rightEyeOpenProbability ?? 0.0;
     final eyesOnCamera =
-        leftEyeOpen >= _kEyesOpenMin && rightEyeOpen >= _kEyesOpenMin;
+        leftEyeOpen >= c.eyesOpenMinForIndicator &&
+        rightEyeOpen >= c.eyesOpenMinForIndicator;
 
     final progress = ScanProgress(
       faceDetected: true,
@@ -276,16 +266,16 @@ class _FaceLivenessScannerState extends State<FaceLivenessScanner>
     if (!goodSize) {
       return (
         progress: progress,
-        nextStep: faceSizeNorm > _kFaceSizeMax
+        nextStep: faceSizeNorm > c.faceSizeMax
             ? 'Move back – face too close'
             : 'Move closer – face too far',
         canCapture: false,
       );
     }
     if (!lookingAtCamera) {
-      final hint = yaw.abs() > _kMaxYawDeg
+      final hint = yaw.abs() > c.maxYawDeg
           ? 'Turn face straight – do not turn left or right'
-          : roll.abs() > _kMaxRollDeg
+          : roll.abs() > c.maxRollDeg
               ? 'Keep head upright – do not tilt'
               : 'Lift chin straight – do not nod';
       return (progress: progress, nextStep: hint, canCapture: false);
@@ -340,21 +330,23 @@ class _FaceLivenessScannerState extends State<FaceLivenessScanner>
     final leftOpen = face.leftEyeOpenProbability ?? 0;
     final rightOpen = face.rightEyeOpenProbability ?? 0;
 
-    if (leftOpen < _kEyeClosedThreshold && rightOpen < _kEyeClosedThreshold) {
+    final closedThresh = _config.eyeClosedThreshold;
+    final openThresh = _config.eyeOpenThreshold;
+    if (leftOpen < closedThresh && rightOpen < closedThresh) {
       _eyesWereClosed = true;
       setState(() {
         _progress = check.progress;
         _statusMessage = 'Open your eyes to complete';
       });
     } else if (_eyesWereClosed &&
-        leftOpen >= _kEyeOpenThreshold &&
-        rightOpen >= _kEyeOpenThreshold) {
+        leftOpen >= openThresh &&
+        rightOpen >= openThresh) {
       _captured = true;
       _stopStream();
       await _captureAndDeliver();
     } else {
       // Eyes are open and all checks pass — save as candidate capture frame.
-      if (leftOpen >= _kEyeOpenThreshold && rightOpen >= _kEyeOpenThreshold) {
+      if (leftOpen >= openThresh && rightOpen >= openThresh) {
         _lastGoodFrame = image;
       }
       setState(() {

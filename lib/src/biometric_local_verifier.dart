@@ -11,6 +11,14 @@ const double kDefaultSimilarityThreshold = 0.6;
 /// Lenient threshold for gallery vs camera (different lighting, angle). Use when gallery images fail with same person.
 const double kLenientSimilarityThreshold = 0.4;
 
+/// Callback to compare two embeddings. Returns similarity 0.0–1.0 (higher = more similar).
+///
+/// Use [customMatcher] when you need your own matching logic (e.g. different algorithm,
+/// server-side comparison, or app-specific thresholds).
+///
+/// Default implementation uses [FaceVerification.instance.getSimilarityScore].
+typedef FaceMatcher = double Function(List<double> enrolled, List<double> probe);
+
 /// Result of local verification against stored biometric data.
 sealed class LocalVerificationResult {}
 
@@ -53,6 +61,7 @@ class BiometricLocalVerifier {
     this.similarityThreshold = kDefaultSimilarityThreshold,
     this.verifySignature = true,
     this.embeddingExtractor,
+    this.customMatcher,
   }) : storage = storage ?? BiometricLocalStorage();
 
   final BiometricLocalStorage storage;
@@ -61,6 +70,13 @@ class BiometricLocalVerifier {
 
   /// Extracts embedding via extractFaceRegion → extractFaceEmbedding. Required for [verifyWithImage].
   final EmbeddingExtractor? embeddingExtractor;
+
+  /// Custom matching logic. When null, uses FaceNet [FaceVerification.instance.getSimilarityScore].
+  /// Use for app-specific comparison, server-side matching, or different thresholds.
+  final FaceMatcher? customMatcher;
+
+  double _similarity(List<double> a, List<double> b) =>
+      customMatcher?.call(a, b) ?? FaceVerification.instance.getSimilarityScore(a, b);
 
   /// Verifies [newImage] by extracting face from both images, then comparing embeddings.
   /// Same flow as tensorflow_face_verification:
@@ -93,10 +109,7 @@ class BiometricLocalVerifier {
 
       final embedding2 = await _extractEmbeddingViaFaceRegion(newImage);
 
-      final score = FaceVerification.instance.getSimilarityScore(
-        embedding1,
-        embedding2,
-      );
+      final score = _similarity(embedding1, embedding2);
 
       if (score < similarityThreshold) {
         return LocalVerificationEmbeddingMismatch(
@@ -136,10 +149,7 @@ class BiometricLocalVerifier {
       return LocalVerificationNoStoredData();
     }
     try {
-      final score = FaceVerification.instance.getSimilarityScore(
-        stored.embedding,
-        newEmbedding,
-      );
+      final score = _similarity(stored.embedding, newEmbedding);
       if (score < similarityThreshold) {
         return LocalVerificationEmbeddingMismatch(
           similarityScore: score,
@@ -165,10 +175,7 @@ class BiometricLocalVerifier {
     }
 
     try {
-      final score = FaceVerification.instance.getSimilarityScore(
-        stored.embedding,
-        newData.embedding,
-      );
+      final score = _similarity(stored.embedding, newData.embedding);
 
       if (score < similarityThreshold) {
         return LocalVerificationEmbeddingMismatch(
